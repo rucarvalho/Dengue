@@ -1,0 +1,382 @@
+---
+title: "script_dengue"
+author: "Rubens Carvalho"
+date: "16/06/2023"
+output: html_document
+---
+
+Pacotes utilizados
+```{r}
+library(tidyverse)
+library(read.dbc)
+library(readxl)
+library(lubridate)
+
+options(scipen = 999) # Retirar notação científica
+```
+  
+Subindo e unificando bases
+```{r}
+df13 <- read.dbc("bases/casos/DENGBR13.dbc") # subindo base
+
+# selecionando colunas
+df13 <- df13 %>% 
+  select(ID_AGRAVO, SEM_NOT, NU_ANO, SG_UF, CS_RACA, CS_SEXO, NU_IDADE_N, DT_NOTIFIC, ID_MN_RESI)
+
+df14 <- read.dbc("bases/casos/DENGBR14.dbc")
+
+df14 <- df14 %>% 
+  select(ID_AGRAVO, SEM_NOT, NU_ANO, SG_UF, CS_RACA, CS_SEXO, NU_IDADE_N, DT_NOTIFIC, ID_MN_RESI)
+
+df15 <- read.dbc("bases/casos/DENGBR15.dbc")
+
+df15 <- df15 %>% 
+  select(ID_AGRAVO, SEM_NOT, NU_ANO, SG_UF, CS_RACA, CS_SEXO, NU_IDADE_N, DT_NOTIFIC, ID_MN_RESI)
+
+df16 <- read.dbc("bases/casos/DENGBR16.dbc")
+
+df16 <- df16 %>% 
+  select(ID_AGRAVO, SEM_NOT, NU_ANO, SG_UF, CS_RACA, CS_SEXO, NU_IDADE_N, DT_NOTIFIC, ID_MN_RESI)
+
+df17 <- read.dbc("bases/casos/DENGBR17.dbc")
+
+df17 <- df17 %>% 
+  select(ID_AGRAVO, SEM_NOT, NU_ANO, SG_UF, CS_RACA, CS_SEXO, NU_IDADE_N, DT_NOTIFIC, ID_MN_RESI)
+
+df18 <- read.dbc("bases/casos/DENGBR18.dbc")
+
+df18 <- df18 %>% 
+  select(ID_AGRAVO, SEM_NOT, NU_ANO, SG_UF, CS_RACA, CS_SEXO, NU_IDADE_N, DT_NOTIFIC, ID_MN_RESI)
+
+df19 <- read.dbc("bases/casos/DENGBR19.dbc")
+
+df19 <- df19 %>% 
+  select(ID_AGRAVO, SEM_NOT, NU_ANO, SG_UF, CS_RACA, CS_SEXO, NU_IDADE_N, DT_NOTIFIC, ID_MN_RESI)
+
+df20 <- read.dbc("bases/casos/DENGBR20.dbc")
+
+df20 <- df20 %>% 
+  select(ID_AGRAVO, SEM_NOT, NU_ANO, SG_UF, CS_RACA, CS_SEXO, NU_IDADE_N, DT_NOTIFIC, ID_MN_RESI)
+
+df21 <- read.dbc("bases/casos/DENGBR21.dbc")
+
+df21 <- df21 %>% 
+  select(ID_AGRAVO, SEM_NOT, NU_ANO, SG_UF, CS_RACA, CS_SEXO, NU_IDADE_N, DT_NOTIFIC, ID_MN_RESI)
+
+# Unificando tudo em um unica base
+df_unido <- rbind(df13, df14, df15, df16, df17, df18, df19, df20, df21)
+
+# Removendo as bases individuais
+remove(df13, df14, df15, df16, df17, df18, df19, df20, df21)
+
+# Nº de linhas na base
+nrow(df_unido)
+```
+  
+Subindo base de UFs com população do IBGE de 2021
+```{r}
+cod_uf <- read_excel("bases/auxiliares/cod_uf.xlsx") # subindo base
+
+```
+  
+Unificando bases de casos e vidas p/ calculo de incidência
+```{r}
+# Tabela de casos por UF
+tab_uf <- df_unido %>% 
+  filter(!is.na(SG_UF)) %>% # excluindo registros sem UF
+  group_by(SG_UF) %>% 
+  summarise(casos = n())
+
+# Total de casos com UF
+sum(tab_uf$casos)
+
+# Unindo a tabela de casos com a de população
+tab_uf <- left_join(tab_uf, cod_uf, by = c("SG_UF" = "COD_UF"))
+
+# Calculo da incidência por 1.000 habitantes
+tab_uf["incidencia"] <- tab_uf$casos / tab_uf$`pop 2021` * 1000
+
+# Top 3 UFs por nº de casos
+tab_uf %>% arrange(desc(casos)) %>% head(3)
+
+# Top 3 UFs por incidência
+tab_uf %>% arrange(desc(incidencia)) %>% head(3)
+```
+  
+Criando a base apenas do estado do Acre e montando gráfico de casos por data de notificação
+```{r}
+# Selecionando apenas dados do Acre
+df_acre <- df_unido %>% 
+  filter(SG_UF == "12")
+
+# Uma pequena validação é: o campo [SEM_NOT] tem de ter 6 digitos (4 do ano e 2 da semana)
+df_acre["n_carac"] <- nchar(as.character(df_acre$SEM_NOT))
+
+# Atenção ! O comando table() exclui os valores NA, então se o campo tiver sem 
+# preenchimento ele não aparecerá
+table(df_acre$n_carac) 
+# Mais seguro (mesmo sendo "mais trabalhoso") usar o comando:
+df_acre %>% 
+group_by(n_carac) %>% 
+summarise(casos = n()) # Temos 15.086 casos sem semana de notificação
+
+# Filtrando apenas registros corretos
+df_acre <- df_acre %>% 
+  filter(n_carac == 6)
+
+# Gráfico inicial, casos por data de notificação
+df_acre %>% 
+  group_by(DT_NOTIFIC) %>% 
+  summarise(vol = n()) %>%
+  ggplot(aes(x = DT_NOTIFIC, y = vol)) +
+  geom_line() +
+  scale_y_continuous(breaks = seq(0,750,250)) +
+  scale_x_continuous(breaks = seq(as.Date("2013-01-01"),as.Date("2021-12-31"),365.25)) +
+  labs(x = "Data", 
+       y = "Nº",
+       title = "Nº de casos por data de notificação"
+)
+```
+  
+Tabela de casos por ano, para verificar o preenchimento do campo
+```{r}
+base_ano <- df_acre %>% 
+  group_by(NU_ANO) %>% 
+  summarise(casos = n())
+```
+  
+Analise da base de 2020
+```{r}
+# Subindo base de 2020
+a20 <- read.dbc("bases/casos/DENGBR20.dbc")
+
+# Abrindo base de 2020
+View(a20)
+```
+  
+Gerando novamente o gráfico sem os anos de 2012, 2020, 2021 e 2022
+```{r}
+# removendo os anos
+df_acre <- df_acre %>%  
+  filter(!NU_ANO %in% c("2012","2020","2021", "2022"))
+
+df_acre %>% 
+  group_by(DT_NOTIFIC) %>% 
+  summarise(vol = n()) %>%
+  ggplot(aes(x = DT_NOTIFIC, y = vol)) +
+  geom_line() +
+  scale_y_continuous(breaks = seq(0,750,250)) +
+  scale_x_continuous(breaks = seq(as.Date("2013-01-01"),as.Date("2021-12-31"),365.25)) +
+  labs(x = "Data", 
+       y = "Nº",
+       title = "Nº de casos por data de notificação"
+  )
+
+```
+  
+Gerando gráfico mais detalhado
+```{r}
+# Gráfico das notificações por data
+df_acre %>% 
+  group_by(DT_NOTIFIC, NU_ANO) %>% 
+  summarise(vol = n()) %>%
+  ggplot() +
+  geom_line(aes(x = DT_NOTIFIC, y = vol, color = NU_ANO)) +
+  geom_hline(yintercept = 200)+  # Linha traçada no eixo Y com valor alheio 200
+  scale_y_continuous(breaks = seq(0,600,100)) +
+  scale_x_continuous(breaks = seq(as.Date("2013-01-01"),as.Date("2020-01-01"),365.25)) +
+  labs(x = "Data", 
+       y = "Nº",
+       title = "Nº de casos por data de notificação",
+       color = "Ano"
+       )
+```
+  
+Instalando o pacote microdatasus
+```{r}
+install.packages("remotes")
+remotes::install_github("rfsaldanha/microdatasus")
+library(microdatasus)
+```
+  
+Baixando base de dados de óbitos e decodificando
+```{r}
+# Baixando a base da DO de 2013 a 2019 do estado do Acre
+do <- fetch_datasus(year_start = 2013, # Ano inicial
+                    year_end = 2019, # Ano final
+                    uf = "AC", # estado/ UF
+                    information_system = "SIM-DO") # Sistema de informação (nesse caso o SIM)
+
+# Decodificando os dados
+do <- process_sim(do)
+```
+  
+Selecionando apenas óbitos de Dengue (CID-10 = A90)
+```{r}
+# Filtrando os óbitos por dengue e criando campo de ano do óbito
+do_dengue <- do %>% 
+  filter(CAUSABAS == "A90") %>% 
+  mutate(ano = substr(DTOBITO,1,4))# selecionando o ano do óbito do campo data do óbito
+
+# Nº de óbitos por ano
+do_dengue %>% group_by(ano) %>% summarise(obitos = n())
+```
+  
+Subindo e unificando base de precipitações do INMET (Instituto Nacional de Meteorologia) e visualizando distribuição das chuvas.
+```{r}
+# Subindo base de precipitação
+estacao13 <- read_excel("bases/precipitacao/chuvas_2013.xlsx")
+estacao14 <- read_excel("bases/precipitacao/chuvas_2014.xlsx")
+estacao15 <- read_excel("bases/precipitacao/chuvas_2015.xlsx")
+estacao16 <- read_excel("bases/precipitacao/chuvas_2016.xlsx")
+estacao17 <- read_excel("bases/precipitacao/chuvas_2017.xlsx")
+estacao18 <- read_excel("bases/precipitacao/chuvas_2018.xlsx")
+estacao19 <- read_excel("bases/precipitacao/chuvas_2019.xlsx")
+
+# unificandoo
+precipitacao <- rbind(estacao13, estacao14, estacao15, estacao16, estacao17, estacao18, estacao19)
+
+# removendo as bases duplicadas
+remove(estacao13, estacao14, estacao15, estacao16, estacao17, estacao18, estacao19)
+
+# Ajuste de alguns campos para construção do gráfico
+precipitacao["dt"] <- ymd(precipitacao$Data) # data da chuva
+precipitacao["ano"] <- substr(precipitacao$Data,1,4) # Ano da chuva
+
+# Gráfico de precipitação
+precipitacao %>% 
+  group_by(dt,ano) %>% 
+  summarise(vol = sum(`Chuva [Diaria] (mm)`, na.rm = TRUE)) %>%
+  ggplot(aes(x = dt, y = vol, color = ano)) +
+  geom_line() +
+  scale_x_continuous(breaks = seq(as.Date("2013-01-01"),as.Date("2020-01-01"),365.25)) +
+  labs(x = "Data", 
+       y = "Precipitação em milímetro (mm)",
+       title = "Volume de chuva",
+       color = "Ano"
+  )
+```
+
+Criando tabela de datas unicas, unificando os dados de casos e chuvas e testando a correlação
+```{r}
+# Tabela referência com todos os dias no intervalo
+tabela_dt <- as.data.frame(seq.Date(from = as_date("2013-01-01"),
+                            to = as_date("2019-12-31"),
+                            by = "1 day"))
+
+colnames(tabela_dt) <- "data_padrao" # Ajustando o nome do campo
+
+# Base de Rio Branco
+df_rio_branco <- df_acre %>% 
+  filter(ID_MN_RESI == 120040) %>% 
+  group_by(DT_NOTIFIC) %>% 
+  summarise(casos = n())
+
+# Unificando as chuvas por dia (a base tras por periodos/horario)
+precipitacao <- precipitacao %>% 
+  group_by(dt) %>% 
+  summarise(chuvas = sum(`Chuva [Diaria] (mm)`, na.rm = TRUE))
+
+# Unificando tabela com todos os dias no intervalo e de precipitação
+tabela_geral <- left_join(tabela_dt, precipitacao, by = c("data_padrao" = "dt"))
+
+# Unificando tabela com todos os dias no intervalo e de casos
+tabela_geral <- left_join(tabela_geral, df_rio_branco, by = c("data_padrao" = "DT_NOTIFIC"))
+
+# Precipitação e casos que estão com NA serão preenchidos com 0
+tabela_geral <- tabela_geral %>% 
+  mutate(chuvas = ifelse(is.na(chuvas),0,chuvas),
+         casos = ifelse(is.na(casos),0,casos))
+
+# Testando correlação entre precipitação e casos de dengue
+cor(tabela_geral$chuvas, tabela_geral$casos)
+```
+  
+Gráfico com 2 eixos Y
+```{r}
+# Gráfico com dois eixos Y, para duas variáveis
+ggplot(tabela_geral, aes(x = data_padrao)) +
+    geom_line(aes(y = chuvas, colour = "Chuvas"))+
+    geom_line(aes(y = casos, colour = "Casos")) +
+    scale_y_continuous(sec.axis = sec_axis(~ . *1 ), limits = c(0, 120)) +
+    scale_x_continuous(breaks = seq(as.Date("2013-01-01"),as.Date("2021-12-31"),365.25)) +
+    labs(x = "Data", 
+       y = "Nº",
+       title = "Nº de casos e precipitação por data",
+       color = "Evento"
+  )
+```
+  
+Testando valores por mês
+```{r}
+# Criando campo de mês e ano
+tabela_geral["mes_ano"] <- substr(tabela_geral$data_padrao,1,7)
+
+# Chuvas e casos por mês
+tab_mes_ano <- tabela_geral %>% 
+  group_by(mes_ano) %>% 
+  summarise(precipitacao = sum(chuvas),
+            casos = sum(casos))
+
+# Testando correlação
+cor(tab_mes_ano$precipitacao, tab_mes_ano$casos)
+
+# Gráfico de dispersão
+ggplot(tab_mes_ano) +
+  geom_point(aes(y = casos, x = precipitacao)) +
+  labs(x = "Precipitação em milímetro (mm)", 
+       y = "Casos",
+       title = "Casos por precipitação"
+  )
+```
+  
+Ajustando campo de idade e criando campo de faixa etária
+```{r}
+# separando a unidade de medida
+df_acre["medida_idade"] <- substr(df_acre$NU_IDADE_N,1,1)
+
+# classificando a unidade de medida, esse "de/para" esta no manual
+df_acre["medida_idade"] <- ifelse(df_acre$medida_idade == "1","Horas", # se igual a 1 são horas
+                      ifelse(df_acre$medida_idade == "2","Dias", # se igual a 2 são dias
+                      ifelse(df_acre$medida_idade == "3","Meses", # se igual a 3 são meses
+                      ifelse(df_acre$medida_idade == "4","Anos","Sem class.")))) # se igual a 4 são anos e se não for nenhum deles é sem classificação
+
+# Separando o valor da idade
+df_acre["valor_idade"] <- as.numeric(substr(df_acre$NU_IDADE_N,2,4)) # transformando em número (estava como caracter) os ultimos 3 digitos
+
+# campo de idade em anos
+df_acre["idade_anos"] <- ifelse(df_acre$medida_idade == "Horas", df_acre$valor_idade/8760, # 1 ano tem 8.760 horas
+                    ifelse(df_acre$medida_idade == "Dias", df_acre$valor_idade/365, # 1 ano tem 365 dias
+                    ifelse(df_acre$medida_idade == "Meses", df_acre$valor_idade/12, # 1 ano tem 12 meses
+                    ifelse(df_acre$medida_idade == "Anos", df_acre$valor_idade, # se ja esta em anos, não precisamos transformar
+                    ifelse(df_acre$medida_idade == "Sem class", NA,"Erro"))))) # e se não temos uma classe, deixamos vazio (NA), e o erro é para caso nenhuma condição seja atendida
+
+df_acre["idade_anos"] <- as.numeric(df_acre$idade_anos)
+
+# Criando o campo de faixa etária, de 10 em 10 anos, até 100 anos, tudo maior ou igual a 100 anos foi agrupado
+df_acre["faixa_etaria"] <- ifelse(df_acre$idade_anos >= 0 & df_acre$idade_anos < 5,"01. 0 a 4 anos",
+                      ifelse(df_acre$idade_anos < 10,"02. 5 a 9 anos",
+                      ifelse(df_acre$idade_anos < 15,"03. 10 a 14 anos",
+                      ifelse(df_acre$idade_anos < 20,"04. 15 a 19 anos",
+                      ifelse(df_acre$idade_anos < 30,"05. 20 a 29 anos",
+                      ifelse(df_acre$idade_anos < 40,"06. 30 a 39 anos",
+                      ifelse(df_acre$idade_anos < 50,"07. 40 a 49 anos",
+                      ifelse(df_acre$idade_anos < 60,"08. 50 a 59 anos",
+                      ifelse(df_acre$idade_anos < 70,"09. 60 a 69 anos",
+                      ifelse(df_acre$idade_anos < 80,"10. 70 a 79 anos",
+                             "11. 80 anos e mais"))))))))))
+
+# Tabela por idade e sexo
+tb_idade_sexo <- df_acre %>% 
+  group_by(faixa_etaria, CS_SEXO) %>% 
+  summarise(vol = n()) %>% 
+  ungroup() %>% 
+  spread(CS_SEXO, vol)
+
+view(tb_idade_sexo)
+
+```
+  
+
+
+
