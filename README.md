@@ -6,4 +6,4 @@ Na pasta bases não estão as bases de casos (muito pesada), podem ser baixadas 
 
 Na pasta referências estão os documentos que auxiliam decodificar a base.
 
-Pode ser visto a análise no link: 
+Pode ser visto a análise no link: https://medium.com/@rubenscsilveira/dengue-no-brasil-e1db575a087d
