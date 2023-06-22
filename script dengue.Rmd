@@ -377,6 +377,158 @@ view(tb_idade_sexo)
 
 ```
   
+Tabela de idade e sexo ajustada
+```{r}
+# Criando campo de mês e ano
+# Tabela por idade e sexo apenas com dados validos
+tb_idade_sexo <- df_acre %>% 
+  filter(!is.na(CS_SEXO) & CS_SEXO != "I") %>% # Excluindo NA e sexo indefinido
+  group_by(faixa_etaria, CS_SEXO) %>% 
+  summarise(vol = n()) %>% 
+  ungroup() %>% 
+  spread(CS_SEXO, vol) %>% 
+  mutate(total = F + M) # Criando campo de total
 
+view(tb_idade_sexo)
 
+sum(tb_idade_sexo$F) # Casos do sexo feminino
+sum(tb_idade_sexo$M) # Casos do sexo masculino
+```  
+  
+Subindo base de vidas por faixa etária e sexo
+```{r}
+# Subindo base de vidas
+pop_acre_2021_sexo_idade <- read_excel("bases/auxiliares/pop_acre_2021_sexo_idade.xlsx",
+                                       range = "A5:D16", col_types = c("text","numeric", "numeric", "numeric")) # especificando a "parte" do excel que subiremos (A5:D16)
 
+# Calculando a incidencia de casos por sexo e faixa etária
+
+pop_acre_2021_sexo_idade["inc_masc"] <- round(tb_idade_sexo$M / pop_acre_2021_sexo_idade$Masculino * 1000,1)
+pop_acre_2021_sexo_idade["inc_fem"] <- round(tb_idade_sexo$F / pop_acre_2021_sexo_idade$Feminino * 1000,1)
+pop_acre_2021_sexo_idade["inc_total"] <- round(tb_idade_sexo$total / pop_acre_2021_sexo_idade$Total * 1000,1)
+
+incidencia <- pop_acre_2021_sexo_idade %>% 
+  select(`Faixa Etária 2`,inc_masc, inc_fem, inc_total)
+
+```
+  
+Agrupar as faixas etárias em grupos (criança, adolescente, adulto e idoso)
+```{r}
+# agrupando bases de casos e vidas
+# Casos
+tb_idade_sexo["grupo"] <- ifelse(tb_idade_sexo$faixa_etaria == "01. 0 a 4 anos","criança",
+                          ifelse(tb_idade_sexo$faixa_etaria == "02. 5 a 9 anos","criança",
+                          ifelse(tb_idade_sexo$faixa_etaria == "03. 10 a 14 anos","adolescente",
+                          ifelse(tb_idade_sexo$faixa_etaria == "04. 15 a 19 anos","adolescente",
+                          ifelse(tb_idade_sexo$faixa_etaria == "09. 60 a 69 anos","idosos",
+                          ifelse(tb_idade_sexo$faixa_etaria == "10. 70 a 79 anos","idosos",
+                          ifelse(tb_idade_sexo$faixa_etaria == "11. 80 anos e mais","idosos",
+                                 "adultos")))))))
+
+tb_casos <- tb_idade_sexo %>% 
+  group_by(grupo) %>% 
+  summarise(fem = sum(F),
+            mas = sum(M),
+            total = sum(total))
+
+# Vidas
+pop_acre_2021_sexo_idade["grupo"] <- ifelse(pop_acre_2021_sexo_idade$`Faixa Etária 2` == "0 a 4 anos","criança",
+                          ifelse(pop_acre_2021_sexo_idade$`Faixa Etária 2` == "5 a 9 anos","criança",
+                          ifelse(pop_acre_2021_sexo_idade$`Faixa Etária 2` == "10 a 14 anos","adolescente",
+                          ifelse(pop_acre_2021_sexo_idade$`Faixa Etária 2` == "15 a 19 anos","adolescente",
+                          ifelse(pop_acre_2021_sexo_idade$`Faixa Etária 2` == "60 a 69 anos","idosos",
+                          ifelse(pop_acre_2021_sexo_idade$`Faixa Etária 2` == "70 a 79 anos","idosos",
+                          ifelse(pop_acre_2021_sexo_idade$`Faixa Etária 2` == "80 anos e mais","idosos",
+                          "adultos")))))))
+
+tb_vidas <- pop_acre_2021_sexo_idade %>% 
+  group_by(grupo) %>% 
+  summarise(fem = sum(Feminino),
+            mas = sum(Masculino),
+            total = sum(Total))
+
+# Calculando a incidencia
+
+tb_casos["inc_fem"] <- tb_casos$fem / tb_vidas$fem * 1000
+tb_casos["inc_mas"] <- tb_casos$mas / tb_vidas$mas * 1000
+tb_casos["inc_total"] <- tb_casos$total / tb_vidas$total * 1000
+
+tb_inc <- tb_casos %>% 
+  select(grupo, inc_fem, inc_mas, inc_total)
+
+# incidencia por sexo
+
+sum(tb_casos$fem) / sum(tb_vidas$fem) * 1000
+sum(tb_casos$mas) / sum(tb_vidas$mas) * 1000
+sum(tb_casos$total) / sum(tb_vidas$total) * 1000
+```
+  
+Teste do Qui-quadrado
+```{r}
+# tabela de casos, teste de qui-quadrado
+
+casos_sexo <- tb_casos %>% 
+  select(fem, mas)
+
+chisq.test(casos_sexo) # Teste do qui-quadrado
+```
+  
+Decodificando a variavel raça/cor e criando gráfico da proporção de casos
+```{r}
+# decodificando a base
+
+df_acre["raca_cor"] <- ifelse(is.na(df_acre$CS_RACA),"Sem info.", # verificando se o campo está em branco
+                       ifelse(df_acre$CS_RACA == 1,"Branca",
+                       ifelse(df_acre$CS_RACA == 2,"Preta",
+                       ifelse(df_acre$CS_RACA == 3,"Amarela",
+                       ifelse(df_acre$CS_RACA == 4,"Parda",
+                       ifelse(df_acre$CS_RACA == 5,"Indigena",
+                       ifelse(df_acre$CS_RACA == 9,"Ignorada","Erro")))))))
+
+# Criando gráfico da proporção de casos por raça/cor
+df_acre %>% 
+  group_by(raca_cor) %>% 
+  summarise(vol = n()) %>% 
+  mutate(prop = round(vol /sum(vol)*100,2),
+         raca_cor = fct_reorder(raca_cor, prop)) %>% 
+  ggplot(aes(x = raca_cor, y = prop)) +
+  geom_col(fill = "purple") +
+  geom_label(aes(label = prop)) +
+  labs(title = "Proporção de casos por raça/cor",
+       x = "Raça/cor",
+       y = "%")+
+  coord_flip()
+```
+  
+Criando base de vidas por raça/cor, calculando a incidência e montando gráfico
+```{r}
+# Criando base de dados com população por raça/cor 
+pop <- data.frame(raca_cor = c("Parda", "Branca", "Preta", "Amarela", "Indigena"),
+                  populacao = c(606398, 211720, 51363, 17807, 19414))
+
+# Criando base com os casos agrupados por raça/cor
+tab_raca_cor <- df_acre %>% 
+  group_by(raca_cor) %>% 
+  summarise(vol = n())
+
+# cruzando as bases
+tab_raca_cor <- left_join(tab_raca_cor, pop, by = "raca_cor")
+
+# Calculo de incidência
+tab_raca_cor["incidencia por 1000hab"] <- round(tab_raca_cor$vol / tab_raca_cor$populacao * 1000,3)
+
+# Gráfico de incidência por raça/cor
+tab_raca_cor %>% 
+  filter(!is.na(`incidencia por 1000hab`)) %>% 
+  mutate(raca_cor = fct_reorder(raca_cor, `incidencia por 1000hab`)) %>% 
+  ggplot(aes(x = raca_cor, y = `incidencia por 1000hab`)) +
+  geom_col(fill = "darkorange") +
+  geom_label(aes(label = `incidencia por 1000hab`)) +
+  labs(title = "Incidência por 1.000hab. por raça/cor",
+       x = "Raça/cor",
+       y = "/1.000hab.")+
+  coord_flip()
+
+# Calculo do RR
+tab_raca_cor[5,4] / tab_raca_cor[2,4]
+```
